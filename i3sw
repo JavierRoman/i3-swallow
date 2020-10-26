@@ -1,0 +1,53 @@
+#!/bin/bash
+#======================================================================#
+#                         i3-swallow-bash                              #
+#======================================================================#
+#                      Author: Javier Román                            #
+#----------------------------------------------------------------------#
+#    Window swallowing implementation for i3 written in bash with no   #
+#      no need for external software to be installed apart from i3     #
+#                           (obviously)                                #
+#----------------------------------------------------------------------#
+
+node=$(i3-msg -t get_tree | sed 's/"id":/\0\n/g' | sed '/"focused":true/!d;s/\([0-9]*\),.*/\1/')
+lid=0
+
+# When an event open is detected
+newHandler() {
+    lid=$1
+    i3-msg "[con_id=$node] focus"
+    i3-msg -t command "move scratchpad"
+}
+
+# Handles the window close
+closeHandler() {
+    i3-msg -t command "[con_id=$node] scratchpad show;floating toggle"
+    exit
+}
+
+# Subscribe to the events and perform the swallowing on window creation
+subscribe() {
+    # Get terminal window id
+    while :; do
+	# Subscribe to window events
+    	event=$(i3-msg -t subscribe '["window"]')
+
+	# Get window id of the launched program
+    	wid=$(echo "$event" | sed 's/.*"id":\([0-9]*\),.*/\1/')
+
+	# Trigger newHandler or closeHandler depending on the event
+	eventType=$(echo "$event" | sed 's/{"change":"\([a-z]*\)".*/\1/')
+	case $eventType in
+	    "new")
+                [ $lid -eq 0 ] && newHandler $wid > /dev/null
+	        ;;
+	    "close")
+                [ ! -z $lid ] && [ $lid -eq $wid ] && closeHandler > /dev/null
+		;;
+	esac
+    done
+}
+
+subscribe &
+sleep 0.1 && exec "$@"
+wait
